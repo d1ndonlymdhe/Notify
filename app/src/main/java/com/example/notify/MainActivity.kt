@@ -20,10 +20,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -41,6 +45,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.example.notify.ui.theme.NotifyTheme
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,7 +68,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-const val CHANNEL_ID = "53"
+const val CHANNEL_ID = "TEST_!"
 
 private fun createNotificationChannel(context: Context) {
     val name = "Mdhe Notify"
@@ -79,7 +84,6 @@ private fun createNotificationChannel(context: Context) {
 
 var x = 0;
 
-
 fun getBuilder(text: String, context: Context): NotificationCompat.Builder {
     val builder = NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(R.drawable.ic_launcher_foreground)
@@ -90,12 +94,13 @@ fun getBuilder(text: String, context: Context): NotificationCompat.Builder {
 
 fun checkForNotificationPermission(context: Context): Int {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
     } else {
         TODO("VERSION.SDK_INT < TIRAMISU")
     }
 }
 
+data class Task(val title: String, val description: String)
 
 @Composable
 fun Main() {
@@ -104,6 +109,11 @@ fun Main() {
     val (value, setValue) = remember {
         mutableStateOf("")
     }
+//
+    val tasks = remember {
+        mutableStateListOf(Task("Title 1", "Description 1"), Task("Title 2", "Description 2"))
+    }
+
     LaunchedEffect(Unit) {
         createNotificationChannel(context)
     }
@@ -115,11 +125,6 @@ fun Main() {
                 Toast.makeText(context, "Camera Permission Denied!", Toast.LENGTH_SHORT).show()
             }
         }
-
-//
-//    val hasPermission =
-//        ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS)
-
     NotifyTheme {
         Scaffold(modifier = Modifier.fillMaxSize(),
             topBar = {
@@ -136,47 +141,44 @@ fun Main() {
                 modifier = Modifier
                     .padding(innerPadding)
             ) {
-                Column(
-                    modifier = Modifier.padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(text = value)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = value,
-                            onValueChange = setValue,
-                            modifier = Modifier.weight(0.75F),
-                        )
-                        OutlinedButton(
-                            onClick = {
-                                val builder = getBuilder(value, context)
-                                if (checkForNotificationPermission(context) == PackageManager.PERMISSION_GRANTED) {
-                                    x++
-                                    NotificationManagerCompat.from(context)
-                                        .notify(x, builder.build())
-                                } else {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        x++;
-                                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                        NotificationManagerCompat.from(context)
-                                            .notify(x, builder.build())
-                                    }
-                                }
-//                                NotificationManagerCompat.notify("123",builder.build())
-                            },
-                            modifier = Modifier.weight(0.35F)
-                        ) {
-                            Text("FIRE")
+                LazyColumn(modifier = Modifier.padding(2.dp,4.dp))
+                {
+                    tasks.forEach { task ->
+                        item {
+                            TaskCard(task.title, {}, task.description, {})
+                            Spacer(
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                 }
             }
-
         }
     }
+}
+
+
+@Preview(showBackground = true)
+@Composable
+fun TaskCardPreview() {
+    Task("Testing", "Hello There")
+}
+
+@Composable
+fun TaskCard(
+    title: String,
+    setTitle: (String) -> Unit,
+    description: String,
+    setDescription: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(2.dp,4.dp)
+    ) {
+        Text(text = title, modifier = Modifier.padding(10.dp,4.dp))
+        Text(text = description)
+
+    }
+
 }
 
 
