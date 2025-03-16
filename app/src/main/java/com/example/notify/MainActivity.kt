@@ -6,7 +6,6 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -14,72 +13,71 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateColorAsState
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
-import androidx.compose.material3.DismissValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarColors
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.notify.ui.theme.NotifyTheme
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.ContextCompat.getSystemService
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.example.notify.DAO.DatabaseProvider
+import com.example.notify.DAO.Task
+import com.example.notify.DAO.TaskViewModel
 
 class MainActivity : ComponentActivity() {
+    private val db by lazy {
+        DatabaseProvider.getDB(applicationContext)
+    }
+    private val viewModel by viewModels<TaskViewModel> {
+        object : ViewModelProvider.Factory {
+            fun <T : ViewModel?> create(modelClass: Class<T>): T {
+                return TaskViewModel(db.taskDao()) as T
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         enableEdgeToEdge()
         setContent {
-            Main()
+            val tasks by viewModel.tasks.collectAsState()
+            Main(tasks, viewModel)
         }
     }
 }
@@ -116,19 +114,16 @@ fun checkForNotificationPermission(context: Context): Int {
     }
 }
 
-data class Task(var title: String, var description: String)
 
 @Composable
-fun Main() {
+fun Main(tasks: List<Task>, viewModel: TaskViewModel) {
     val context = LocalContext.current
-
-    val (value, setValue) = remember {
-        mutableStateOf("")
-    }
+    val db = DatabaseProvider.getDB(context)
+    val taskDao = db.taskDao();
 //
-    val tasks = remember {
-        mutableStateListOf(Task("Title 1", "Description 1"), Task("Title 2", "Description 2"))
-    }
+//    val tasks = remember {
+//        mutableStateListOf(taskDao.getAll())
+//    }
 
     LaunchedEffect(Unit) {
         createNotificationChannel(context)
@@ -154,7 +149,7 @@ fun Main() {
             },
             floatingActionButton = {
                 FloatingActionButton(onClick = {
-                    tasks.add(Task("New Task", "New Description"))
+                    viewModel.upsertTask(Task("Title", "Hello There"))
                 }) {
                     Icon(Icons.Filled.Add, contentDescription = "Add")
                 }
@@ -171,7 +166,7 @@ fun Main() {
                             val dismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { dismissValue ->
                                     if (dismissValue == SwipeToDismissBoxValue.StartToEnd) {
-                                        tasks.remove(task)
+                                        viewModel.deleteTask(task)
                                         true
                                     } else false
                                 }
@@ -187,7 +182,13 @@ fun Main() {
                                                     .fillMaxSize()
                                                     .background(Color.Red)
                                             ) {
-                                                Icon(Icons.Filled.Delete, "DELETE TASK", modifier = Modifier.fillMaxHeight().size(128.dp))
+                                                Icon(
+                                                    Icons.Filled.Delete,
+                                                    "DELETE TASK",
+                                                    modifier = Modifier
+                                                        .fillMaxHeight()
+                                                        .size(128.dp)
+                                                )
                                             }
                                         }
 
@@ -199,10 +200,11 @@ fun Main() {
                                 enableDismissFromStartToEnd = true,
                                 enableDismissFromEndToStart = false
                             ) {
-                                TaskCard(task.title, { it ->
-                                    tasks[idx] = Task(it, task.description)
-                                }, task.description, { it ->
-                                    tasks[idx] = Task(task.title, it)
+                                TaskCard(task.title, { title ->
+                                    viewModel.upsertTask(Task(title, task.description, task.uid))
+                                }, task.description, { description ->
+                                    viewModel.upsertTask(Task(task.title, description, task.uid))
+
                                 })
                             }
                         }
@@ -255,8 +257,8 @@ fun TaskCard(
 }
 
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    Main()
-}
+//@Preview(showBackground = true)
+//@Composable
+//fun GreetingPreview() {
+//    Main()
+//}
