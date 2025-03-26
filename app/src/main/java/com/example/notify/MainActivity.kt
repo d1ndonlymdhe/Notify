@@ -15,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -45,6 +46,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,15 +57,34 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.example.notify.store.AppDatabase
+import com.example.notify.store.Task
+import com.example.notify.store.TaskViewModel
 import com.example.notify.ui.theme.NotifyTheme
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        val database by lazy {
+            AppDatabase.getInstance(this)
+        }
+        val viewModel: TaskViewModel by viewModels<TaskViewModel>(
+            factoryProducer = {
+                object : ViewModelProvider.Factory {
+                    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                        return TaskViewModel(database.dao) as T
+                    }
+                }
+            }
+        )
         enableEdgeToEdge()
         setContent {
-            Main()
+            Main(viewModel)
         }
     }
 }
@@ -99,17 +120,18 @@ fun checkForNotificationPermission(context: Context): Int {
     }
 }
 
-data class Task(var title: String, var description: String)
+//data class Task(var title: String, var description: String)
 
 @Composable
-fun Main() {
+fun Main(viewModel: TaskViewModel) {
     val context = LocalContext.current
     val (value, setValue) = remember {
         mutableStateOf("")
     }
-    val tasks = remember {
-        mutableStateListOf(Task("Title 1", "Description 1"), Task("Title 2", "Description 2"))
-    }
+    val tasks by viewModel.tasks.collectAsState()
+//    val tasks = remember {
+//        mutableStateListOf(Task("Title 1", "Description 1"), Task("Title 2", "Description 2"))
+//    }
     LaunchedEffect(Unit) {
         createNotificationChannel(context)
     }
@@ -132,7 +154,7 @@ fun Main() {
                 ), title = { Text(text = "Mdhe Notify") })
         }, floatingActionButton = {
             FloatingActionButton(onClick = {
-                tasks.add(Task("New Task ${tasks.size + 1}", "New Description"))
+                viewModel.addTask(Task("New Task ${tasks.size + 1}", "New Description"))
             }) {
                 Icon(Icons.Filled.Add, contentDescription = "Add")
             }
@@ -141,15 +163,17 @@ fun Main() {
                 modifier = Modifier.padding(innerPadding)
             ) {
                 LazyColumn(modifier = Modifier.padding(2.dp, 4.dp)) {
-                    itemsIndexed(tasks.toList()) { idx, task ->
-                            TaskCard(task.title, { it ->
-                                tasks[idx] = Task(it, task.description)
-                            }, task.description, { it ->
-                                tasks[idx] = Task(task.title, it)
-                            }, {
-
-                                tasks.remove(task)
-                            })
+                    itemsIndexed(tasks) { idx, task ->
+                        TaskCard(task.title, { it ->
+//                                tasks[idx] = Task(it, task.description)
+                            viewModel.updateTask(Task(it, task.description, task.id))
+                        }, task.description, { it ->
+//                                tasks[idx] = Task(task.title, it)
+                            viewModel.updateTask(Task(task.title, it, task.id))
+                        }, {
+//                                tasks.remove(task)
+                            viewModel.deleteTask(task)
+                        })
                     }
                 }
             }
@@ -178,7 +202,6 @@ fun TaskCard(
             .fillMaxWidth()
             .padding(10.dp, 10.dp)
     ) {
-
         Row {
             TextField(
                 placeholder = { Text(text = "Title") },
@@ -191,8 +214,6 @@ fun TaskCard(
                 Icon(Icons.Default.Delete, "Delete this task")
             }
         }
-
-
         OutlinedTextField(
             value = description,
             onValueChange = setDescription,
@@ -204,12 +225,4 @@ fun TaskCard(
         )
 
     }
-
-}
-
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    Main()
 }
