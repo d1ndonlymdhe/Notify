@@ -17,24 +17,30 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
@@ -51,6 +57,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
@@ -103,8 +110,6 @@ private fun createNotificationChannel(context: Context) {
     notificationManager.createNotificationChannel(channel)
 }
 
-var x = 0;
-
 fun getBuilder(text: String, context: Context): NotificationCompat.Builder {
     val builder = NotificationCompat.Builder(context, CHANNEL_ID)
         .setSmallIcon(R.drawable.ic_launcher_foreground).setContentTitle("Your Task")
@@ -120,20 +125,15 @@ fun checkForNotificationPermission(context: Context): Int {
     }
 }
 
-//data class Task(var title: String, var description: String)
-
 @Composable
 fun Main(viewModel: TaskViewModel) {
     val context = LocalContext.current
-    val (value, setValue) = remember {
-        mutableStateOf("")
-    }
     val tasks by viewModel.tasks.collectAsState()
-//    val tasks = remember {
-//        mutableStateListOf(Task("Title 1", "Description 1"), Task("Title 2", "Description 2"))
-//    }
     LaunchedEffect(Unit) {
         createNotificationChannel(context)
+    }
+    val (showAddDialog, setShowAddDialog) = remember {
+        mutableStateOf(false)
     }
     val permissionLauncher =
         rememberLauncherForActivityResult(contract = ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -154,7 +154,7 @@ fun Main(viewModel: TaskViewModel) {
                 ), title = { Text(text = "Mdhe Notify") })
         }, floatingActionButton = {
             FloatingActionButton(onClick = {
-                viewModel.addTask(Task("New Task ${tasks.size + 1}", "New Description"))
+                setShowAddDialog(true)
             }) {
                 Icon(Icons.Filled.Add, contentDescription = "Add")
             }
@@ -162,16 +162,22 @@ fun Main(viewModel: TaskViewModel) {
             Box(
                 modifier = Modifier.padding(innerPadding)
             ) {
+                if (showAddDialog) {
+                    AddCardDialog(
+                        cancel = { setShowAddDialog(false) },
+                        save = {
+                            viewModel.addTask(it)
+                            setShowAddDialog(false)
+                        }
+                    )
+                }
                 LazyColumn(modifier = Modifier.padding(2.dp, 4.dp)) {
                     itemsIndexed(tasks) { idx, task ->
                         TaskCard(task.title, { it ->
-//                                tasks[idx] = Task(it, task.description)
                             viewModel.updateTask(Task(it, task.description, task.id))
                         }, task.description, { it ->
-//                                tasks[idx] = Task(task.title, it)
                             viewModel.updateTask(Task(task.title, it, task.id))
                         }, {
-//                                tasks.remove(task)
                             viewModel.deleteTask(task)
                         })
                     }
@@ -190,17 +196,74 @@ fun TaskCardPreview() {
 }
 
 @Composable
+fun AddCardDialog(
+    save: (task: Task) -> Unit,
+    cancel: () -> Unit
+) {
+    val (title, setTitle) = remember {
+        mutableStateOf("")
+    }
+    val (description, setDescription) = remember {
+        mutableStateOf("")
+    }
+    Dialog(
+        onDismissRequest = {
+            cancel()
+        }
+    ) {
+        Card(modifier = Modifier.padding(5.dp)) {
+            Column(modifier = Modifier.padding(5.dp)) {
+                TaskCard(title, setTitle, description, setDescription, {})
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    OutlinedButton(onClick = { cancel() }) {
+                        Text("Cancel")
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    OutlinedButton(onClick = {
+                        save(Task(title, description))
+                    }) {
+                        Text("Save")
+                    }
+                }
+            }
+        }
+    }
+//    AlertDialog(onDismissRequest = {
+//        cancel()
+//    }, confirmButton = {
+//        OutlinedButton(onClick = {
+//            save(Task(title, description))
+//        }) {
+//            Text("Save")
+//        }
+//    }, dismissButton = {
+//        OutlinedButton(onClick = {
+//            cancel()
+//        }) {
+//            Text("Cancel")
+//        }
+//    }, title = { Text("Add a new task") }, text = {
+//        TaskCard(title, setTitle, description, setDescription, {}, Modifier.padding(0.dp))
+//    }, modifier = Modifier.padding(0.dp))
+}
+
+@Composable
 fun TaskCard(
     title: String,
     setTitle: (String) -> Unit,
     description: String,
     setDescription: (String) -> Unit,
-    delete: () -> Unit
+    delete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(10.dp, 10.dp)
+            .then(modifier)
     ) {
         Row {
             TextField(
@@ -215,6 +278,9 @@ fun TaskCard(
             }
         }
         OutlinedTextField(
+            placeholder = {
+                Text(text = "Description")
+            },
             value = description,
             onValueChange = setDescription,
             textStyle = MaterialTheme.typography.bodyLarge,
